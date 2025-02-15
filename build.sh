@@ -60,8 +60,8 @@ get_sources() {
   cd build/kernel
   git diff --quiet HEAD || {
     git reset --hard HEAD
-    git submodule update --init --recursive
     git pull
+    git submodule update --init --recursive
   }
 
   # checkout version
