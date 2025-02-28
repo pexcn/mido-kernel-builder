@@ -97,10 +97,8 @@ add_kernelsu() {
 
   # update .config
   scripts/config --file out/.config \
-    --enable CONFIG_MODULES \
-    --enable CONFIG_KPROBES \
-    --enable CONFIG_HAVE_KPROBES \
-    --enable CONFIG_KPROBE_EVENTS
+    --enable CONFIG_KSU \
+    --disable CONFIG_KSU_WITH_KPROBES
 
   # re-generate kernel config
   make "${MAKE_FLAGS[@]}" savedefconfig
@@ -203,7 +201,6 @@ package_kernel() {
 
   # update properties
   sed -i "s/ExampleKernel/\u${BUILD_CONFIG} Kernel for ${GITHUB_WORKFLOW}/; s/by osm0sis @ xda-developers/by ${GITHUB_REPOSITORY_OWNER:-pexcn} @ GitHub/" anykernel.sh
-  sed -i 's/do.devicecheck=1/do.devicecheck=0/g' anykernel.sh
   sed -i '/device.name[1-4]/d' anykernel.sh
   sed -i 's/device.name5=/device.name1='"$DEVICE_CODENAME"'/g' anykernel.sh
   sed -i 's|BLOCK=/dev/block/platform/omap/omap_hsmmc.0/by-name/boot;|BLOCK=auto;|g' anykernel.sh

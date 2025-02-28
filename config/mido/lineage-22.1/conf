@@ -1,6 +1,3 @@
-KERNEL_SOURCE=https://github.com/pexcn/android_kernel_xiaomi_mido.git
-KERNEL_COMMIT=cf711f2b45583be5483efa14b519db15b8da6444
+KERNEL_SOURCE=https://github.com/zeelog/android_kernel_xiaomi_mido.git
+KERNEL_COMMIT=721d3bd420772ed5bc68fdf8b1fc198a8d68955e
 KERNEL_CONFIG=mido_defconfig
-
-# kernelsu is built-in in kernel source
-DONT_PATCH_KERNELSU=true
