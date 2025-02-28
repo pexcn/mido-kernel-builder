@@ -10,7 +10,7 @@ prepare_env() {
   AK3_VERSION=db90e19aae369c9c10b956a08003cee3958d50a0
 
   # set local shell variables
-  source config/$DEVICE_CODENAME/$BUILD_CONFIG.conf
+  source config/$DEVICE_CODENAME/$BUILD_CONFIG/conf
   CUR_DIR=$(dirname "$(readlink -f "$0")")
   MAKE_FLAGS=(
     O=out
@@ -65,11 +65,22 @@ get_sources() {
   }
 
   # checkout version
-  git checkout $KERNEL_COMMIT
+  git checkout $KERNEL_COMMIT || exit 1
 
   # remove `-dirty` of version
   sed -i 's/ -dirty//g' scripts/setlocalversion
 
+  cd -
+}
+
+patch_kernel() {
+  [ -d config/$DEVICE_CODENAME/$BUILD_CONFIG/patches ] || return 0
+
+  cd build/kernel
+  for patch in "$CUR_DIR"/config/"$DEVICE_CODENAME"/"$BUILD_CONFIG"/patches/*.patch; do
+    echo "Applying $(basename $patch)."
+    git apply $patch || exit 2
+  done
   cd -
 }
 
@@ -79,7 +90,7 @@ add_kernelsu() {
   cd build/kernel
 
   # integrate kernelsu-next
-  curl -sSL "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s v1.0.4
+  curl -sSL "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s v1.0.5
 
   # prepare .config
   make "${MAKE_FLAGS[@]}" $KERNEL_CONFIG
@@ -111,6 +122,8 @@ optimize_config() {
     --enable CONFIG_BUILD_ARM64_APPENDED_DTB_IMAGE
   # enable optimizations
   scripts/config --file out/.config \
+    --enable CONFIG_INLINE_OPTIMIZATION \
+    --enable CONFIG_POLLY_CLANG \
     --enable CONFIG_STRIP_ASM_SYMS
   # enable full lto
   scripts/config --file out/.config \
@@ -178,7 +191,7 @@ build_kernel() {
   # select kernel config
   make "${MAKE_FLAGS[@]}" $KERNEL_CONFIG
   # compile kernel
-  make "${MAKE_FLAGS[@]}" -j$(($(nproc) + 1)) || exit 1
+  make "${MAKE_FLAGS[@]}" -j$(($(nproc) + 1)) || exit 3
 
   cd -
 }
@@ -190,6 +203,7 @@ package_kernel() {
 
   # update properties
   sed -i "s/ExampleKernel/\u${BUILD_CONFIG} Kernel for ${GITHUB_WORKFLOW}/; s/by osm0sis @ xda-developers/by ${GITHUB_REPOSITORY_OWNER:-pexcn} @ GitHub/" anykernel.sh
+  sed -i 's/do.devicecheck=1/do.devicecheck=0/g' anykernel.sh
   sed -i '/device.name[1-4]/d' anykernel.sh
   sed -i 's/device.name5=/device.name1='"$DEVICE_CODENAME"'/g' anykernel.sh
   sed -i 's|BLOCK=/dev/block/platform/omap/omap_hsmmc.0/by-name/boot;|BLOCK=auto;|g' anykernel.sh
@@ -213,6 +227,7 @@ package_kernel() {
 
 prepare_env
 get_sources
+patch_kernel
 add_kernelsu
 optimize_config
 build_kernel
