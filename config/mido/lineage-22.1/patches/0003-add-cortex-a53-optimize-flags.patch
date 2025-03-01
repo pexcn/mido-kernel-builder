@@ -1,7 +1,7 @@
-From 1e108a5fded8401cb26a4338ab193885e9ef3c31 Mon Sep 17 00:00:00 2001
+From 858ff4702685fd18a8b03373816de0c4236995f4 Mon Sep 17 00:00:00 2001
 From: pexcn <pexcn97@gmail.com>
 Date: Fri, 14 Feb 2025 15:09:53 +0800
-Subject: [PATCH] add cortex-a53 optimize flags
+Subject: [PATCH 3/3] add cortex-a53 optimize flags
 
 ---
  Makefile | 2 +-

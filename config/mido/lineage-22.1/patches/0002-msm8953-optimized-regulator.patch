@@ -1,7 +1,7 @@
-From b7dbe539069ff57784754aa4daeec4286d82e644 Mon Sep 17 00:00:00 2001
+From c5090a24bd60386f52a86be038efe4db330c8312 Mon Sep 17 00:00:00 2001
 From: pexcn <pexcn97@gmail.com>
 Date: Fri, 14 Feb 2025 10:12:35 +0800
-Subject: [PATCH 2/2] msm8953: optimized regulator
+Subject: [PATCH 2/3] msm8953: optimized regulator
 
 ---
  arch/arm64/boot/dts/qcom/msm8953-regulator.dtsi | 8 ++++++++
