@@ -1,0 +1,42 @@
+From fb6861139daeab1f1895885923d51f079ec09fb9 Mon Sep 17 00:00:00 2001
+From: pexcn <pexcn97@gmail.com>
+Date: Sat, 1 Mar 2025 13:17:05 +0800
+Subject: [PATCH] kernelsu: 32-bit su is needed
+
+---
+ fs/exec.c | 4 ++++
+ fs/stat.c | 3 +++
+ 2 files changed, 7 insertions(+)
+
+diff --git a/fs/exec.c b/fs/exec.c
+index 9f90b80ba..09755f39e 100644
+--- a/fs/exec.c
++++ b/fs/exec.c
+@@ -1884,6 +1884,10 @@ static int compat_do_execve(struct filename *filename,
+ 		.is_compat = true,
+ 		.ptr.compat = __envp,
+ 	};
++#ifdef CONFIG_KSU
++	if (!ksu_execveat_hook)
++		ksu_handle_execveat_sucompat((int *)AT_FDCWD, &filename, NULL, NULL, NULL); /* 32-bit su */
++#endif
+ 	return do_execveat_common(AT_FDCWD, filename, argv, envp, 0);
+ }
+ 
+diff --git a/fs/stat.c b/fs/stat.c
+index efc9d3e08..ea74f7d8b 100644
+--- a/fs/stat.c
++++ b/fs/stat.c
+@@ -443,6 +443,9 @@ SYSCALL_DEFINE4(fstatat64, int, dfd, const char __user *, filename,
+ 	struct kstat stat;
+ 	int error;
+ 
++#ifdef CONFIG_KSU
++	ksu_handle_stat(&dfd, &filename, &flag); /* 32-bit su */
++#endif
+ 	error = vfs_fstatat(dfd, filename, &stat, flag);
+ 	if (error)
+ 		return error;
+-- 
+2.45.2
+
