@@ -6,7 +6,7 @@ prepare_env() {
   mkdir -p download
 
   # updatable part
-  CLANG_URL=https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r530567.tar.gz
+  CLANG_URL=https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r547379.tar.gz
   AK3_VERSION=db90e19aae369c9c10b956a08003cee3958d50a0
 
   # set local shell variables
@@ -123,13 +123,14 @@ optimize_config() {
     --enable CONFIG_INLINE_OPTIMIZATION \
     --enable CONFIG_POLLY_CLANG \
     --enable CONFIG_STRIP_ASM_SYMS
-  # enable full lto
+  # enable thin lto
   scripts/config --file out/.config \
-    --disable CONFIG_LTO_NONE \
-    --disable CONFIG_THINLTO \
     --enable CONFIG_LTO \
-    --disable CONFIG_LTO_CLANG_THIN \
-    --enable CONFIG_LTO_CLANG_FULL
+    --enable CONFIG_LTO_CLANG \
+    --enable CONFIG_LTO_CLANG_THIN \
+    --disable CONFIG_LTO_CLANG_FULL \
+    --enable CONFIG_THINLTO \
+    --disable CONFIG_LTO_NONE
   # optimize kernel compression
   scripts/config --file out/.config \
     --disable CONFIG_KERNEL_GZIP \
@@ -176,6 +177,15 @@ optimize_config() {
     --disable CONFIG_DEBUG_BUGVERBOSE \
     --disable CONFIG_DEBUG_LIST
 
+  # full lto override
+  if [ "$ENABLE_FULL_LTO" = true ]; then
+    scripts/config --file out/.config \
+      --disable CONFIG_LTO_NONE \
+      --disable CONFIG_THINLTO \
+      --disable CONFIG_LTO_CLANG_THIN \
+      --enable CONFIG_LTO_CLANG_FULL
+  fi
+
   # re-generate kernel config
   make "${MAKE_FLAGS[@]}" savedefconfig
   cp -f out/defconfig arch/arm64/configs/${KERNEL_CONFIG%% *}
@@ -201,14 +211,14 @@ package_kernel() {
 
   # update properties
   sed -i "s/ExampleKernel/\u${BUILD_CONFIG} Kernel for ${GITHUB_WORKFLOW}/; s/by osm0sis @ xda-developers/by ${GITHUB_REPOSITORY_OWNER:-pexcn} @ GitHub/" anykernel.sh
+  [ "$DISABLE_DEVICE_CHECK" != true ] || sed -i 's/do.devicecheck=1/do.devicecheck=0/g' anykernel.sh
   sed -i '/device.name[1-4]/d' anykernel.sh
   sed -i 's/device.name5=/device.name1='"$DEVICE_CODENAME"'/g' anykernel.sh
   sed -i 's|BLOCK=/dev/block/platform/omap/omap_hsmmc.0/by-name/boot;|BLOCK=auto;|g' anykernel.sh
   sed -i 's/IS_SLOT_DEVICE=0;/IS_SLOT_DEVICE=auto;/g' anykernel.sh
-  #sed -i '/^PATCH_VBMETA_FLAG=auto;/a NO_MAGISK_CHECK=1;' anykernel.sh
 
   # clean folder
-  rm -rf .git .github README.md
+  rm -rf .git .github modules patch ramdisk LICENSE README.md
   find . -name "placeholder" -delete
 
   # packaging
