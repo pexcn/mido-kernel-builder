@@ -1,5 +1,3 @@
 KERNEL_SOURCE=https://github.com/zeelog/android_kernel_xiaomi_mido.git
 KERNEL_COMMIT=721d3bd420772ed5bc68fdf8b1fc198a8d68955e
 KERNEL_CONFIG=mido_defconfig
-
-ENABLE_FULL_LTO=true

@@ -123,14 +123,6 @@ optimize_config() {
     --enable CONFIG_INLINE_OPTIMIZATION \
     --enable CONFIG_POLLY_CLANG \
     --enable CONFIG_STRIP_ASM_SYMS
-  # enable thin lto
-  scripts/config --file out/.config \
-    --enable CONFIG_LTO \
-    --enable CONFIG_LTO_CLANG \
-    --enable CONFIG_LTO_CLANG_THIN \
-    --disable CONFIG_LTO_CLANG_FULL \
-    --enable CONFIG_THINLTO \
-    --disable CONFIG_LTO_NONE
   # optimize kernel compression
   scripts/config --file out/.config \
     --disable CONFIG_KERNEL_GZIP \
@@ -176,15 +168,6 @@ optimize_config() {
     --disable CONFIG_SCHED_DEBUG \
     --disable CONFIG_DEBUG_BUGVERBOSE \
     --disable CONFIG_DEBUG_LIST
-
-  # full lto override
-  if [ "$ENABLE_FULL_LTO" = true ]; then
-    scripts/config --file out/.config \
-      --disable CONFIG_LTO_NONE \
-      --disable CONFIG_THINLTO \
-      --disable CONFIG_LTO_CLANG_THIN \
-      --enable CONFIG_LTO_CLANG_FULL
-  fi
 
   # re-generate kernel config
   make "${MAKE_FLAGS[@]}" savedefconfig
