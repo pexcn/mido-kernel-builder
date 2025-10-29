@@ -1,3 +1,5 @@
-KERNEL_SOURCE=https://github.com/zeelog/android_kernel_xiaomi_mido.git
-KERNEL_COMMIT=721d3bd420772ed5bc68fdf8b1fc198a8d68955e
+KERNEL_SOURCE=https://github.com/pexcn/android_kernel_xiaomi_mido.git
+KERNEL_COMMIT=d0c14b716771559bb15575825d2f6f4da3b5e2c2
 KERNEL_CONFIG=mido_defconfig
+
+DONT_PATCH_KERNELSU=true
