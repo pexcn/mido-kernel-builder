@@ -1,5 +1,5 @@
 #!/bin/bash
-# shellcheck disable=SC1090,SC2086,SC2164,SC2103,SC2155
+# shellcheck disable=SC1090,SC2086,SC2164,SC2103,SC2155,SC2129
 
 prepare_env() {
   mkdir -p build
@@ -67,9 +67,6 @@ get_sources() {
   # checkout version
   git checkout $KERNEL_COMMIT || exit 1
 
-  # remove `-dirty` of version
-  sed -i 's/ -dirty//g' scripts/setlocalversion
-
   cd -
 }
 
@@ -81,6 +78,10 @@ patch_kernel() {
     echo "Applying $(basename $patch)."
     git apply $patch || exit 2
   done
+
+  # remove `-dirty` even if there are uncommitted changes
+  sed -i 's/ -dirty//g' scripts/setlocalversion
+
   cd -
 }
 
@@ -90,7 +91,7 @@ add_kernelsu() {
   cd build/kernel
 
   # integrate kernelsu-next
-  curl -sSL "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s v1.0.6
+  curl -sSL "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s v1.0.8
 
   # prepare .config
   make "${MAKE_FLAGS[@]}" $KERNEL_CONFIG
@@ -98,7 +99,7 @@ add_kernelsu() {
   # update .config
   scripts/config --file out/.config \
     --enable CONFIG_KSU \
-    --disable CONFIG_KSU_WITH_KPROBES
+    --disable CONFIG_KSU_KPROBES_HOOK
 
   # re-generate kernel config
   make "${MAKE_FLAGS[@]}" savedefconfig
@@ -115,21 +116,16 @@ optimize_config() {
   # prepare .config
   make "${MAKE_FLAGS[@]}" $KERNEL_CONFIG
 
-  # build `Image*-dtb`
+  # optimize kernel build
   scripts/config --file out/.config \
-    --enable CONFIG_BUILD_ARM64_APPENDED_DTB_IMAGE
-  # enable optimizations
+    --set-str CONFIG_LOCALVERSION "-perf" \
+    --disable CONFIG_BUILD_ARM64_APPENDED_DTB_IMAGE
+  # optimize kernel image
   scripts/config --file out/.config \
+    --enable CONFIG_LD_DEAD_CODE_DATA_ELIMINATION \
     --enable CONFIG_INLINE_OPTIMIZATION \
     --enable CONFIG_POLLY_CLANG \
     --enable CONFIG_STRIP_ASM_SYMS
-  # optimize kernel compression
-  scripts/config --file out/.config \
-    --disable CONFIG_KERNEL_GZIP \
-    --enable CONFIG_KERNEL_LZ4 \
-    --enable CONFIG_HAVE_KERNEL_LZ4 \
-    --enable CONFIG_RD_LZ4 \
-    --enable CONFIG_CRYPTO_LZ4
   # optimize network scheduler
   scripts/config --file out/.config \
     --enable CONFIG_NET_SCH_FQ_CODEL \
@@ -144,12 +140,19 @@ optimize_config() {
     --enable CONFIG_TCP_CONG_WESTWOOD \
     --enable CONFIG_DEFAULT_WESTWOOD \
     --set-str CONFIG_DEFAULT_TCP_CONG "westwood"
-  # disable unused features
+  # disable unused modules
   scripts/config --file out/.config \
     --disable CONFIG_CAN \
-    --disable CONFIG_FTRACE \
-    --disable CONFIG_SVELTE \
-    --disable CONFIG_IOMONITOR
+    --disable CONFIG_STM \
+    --disable CONFIG_FTRACE
+  # disable unused features
+  scripts/config --file out/.config \
+    --disable CONFIG_BLK_DEV_RAM \
+    --disable CONFIG_ZRAM_WRITEBACK \
+    --disable CONFIG_VIRTIO_MENU \
+    --disable CONFIG_RUNTIME_TESTING_MENU \
+    --disable CONFIG_F2FS_STAT_FS \
+    --disable CONFIG_F2FS_IOSTAT
   # disable debug options
   scripts/config --file out/.config \
     --disable CONFIG_ALLOW_DEV_COREDUMP \
@@ -158,12 +161,9 @@ optimize_config() {
     --disable CONFIG_SPMI_MSM_PMIC_ARB_DEBUG \
     --disable CONFIG_VIDEO_ADV_DEBUG \
     --disable CONFIG_MSM_DEBUGCC_KONA \
-    --disable CONFIG_DEBUG_KERNEL \
+    --disable CONFIG_NL80211_TESTMODE \
     --disable CONFIG_DEBUG_ALIGN_RODATA \
-    --disable CONFIG_KMALLOC_DEBUG \
-    --disable CONFIG_VMALLOC_DEBUG \
-    --disable CONFIG_DUMP_TASKS_MEM \
-    --disable CONFIG_VSERVICES_LOCK_DEBUG \
+    --disable CONFIG_DEBUG_KERNEL \
     --disable CONFIG_DEBUG_INFO \
     --disable CONFIG_SCHED_DEBUG \
     --disable CONFIG_DEBUG_BUGVERBOSE \
@@ -187,29 +187,73 @@ build_kernel() {
   cd -
 }
 
-package_kernel() {
+adapt_anykernel3() {
   git clone https://github.com/osm0sis/AnyKernel3.git -b master --single-branch build/anykernel3
   cd build/anykernel3
   git checkout $AK3_VERSION
 
-  # update properties
+  # adapting anykernel.sh
   sed -i "s/ExampleKernel/\u${BUILD_CONFIG} Kernel for ${GITHUB_WORKFLOW}/; s/by osm0sis @ xda-developers/by ${GITHUB_REPOSITORY_OWNER:-pexcn} @ GitHub/" anykernel.sh
-  [ "$DISABLE_DEVICE_CHECK" != true ] || sed -i 's/do.devicecheck=1/do.devicecheck=0/g' anykernel.sh
   sed -i '/device.name[1-4]/d' anykernel.sh
   sed -i 's/device.name5=/device.name1='"$DEVICE_CODENAME"'/g' anykernel.sh
   sed -i 's|BLOCK=/dev/block/platform/omap/omap_hsmmc.0/by-name/boot;|BLOCK=auto;|g' anykernel.sh
   sed -i 's/IS_SLOT_DEVICE=0;/IS_SLOT_DEVICE=auto;/g' anykernel.sh
+  if [ "$DISABLE_DEVICE_CHECK" = true ]; then
+    sed -i 's/do.devicecheck=1/do.devicecheck=0/g' anykernel.sh
+  fi
+
+  # remove unnecessary configs
+  sed -i '/^### AnyKernel install/q' anykernel.sh
+
+  # flash `Image` and `dtb`
+  cat <<-EOF >> anykernel.sh
+	BLOCK=boot;
+	IS_SLOT_DEVICE=auto;
+	RAMDISK_COMPRESSION=auto;
+	PATCH_VBMETA_FLAG=auto;
+	. tools/ak3-core.sh;
+	split_boot;
+	flash_boot;
+	EOF
+
+  # flash `dtbo.img`
+  if [ -f $CUR_DIR/build/kernel/out/arch/arm64/boot/dtbo.img ]; then
+    echo >> anykernel.sh
+    cat <<-EOF >> anykernel.sh
+		flash_dtbo;
+		EOF
+  fi
+
+  # flash vendor_boot partition
+  if [ "$HAVE_VENDOR_BOOT" = true ]; then
+    echo >> anykernel.sh
+    cat <<-EOF >> anykernel.sh
+		BLOCK=vendor_boot;
+		IS_SLOT_DEVICE=auto;
+		RAMDISK_COMPRESSION=auto;
+		PATCH_VBMETA_FLAG=auto;
+		reset_ak;
+		split_boot;
+		flash_boot;
+		EOF
+  fi
 
   # clean folder
   rm -rf .git .github modules patch ramdisk LICENSE README.md
-  find . -name "placeholder" -delete
+  #find . -name "placeholder" -delete
 
-  # packaging
-  if ! cp $CUR_DIR/build/kernel/out/arch/arm64/boot/Image*-dtb .; then
-    cp $CUR_DIR/build/kernel/out/arch/arm64/boot/Image .
-    cp $CUR_DIR/build/kernel/out/arch/arm64/boot/dtb .
-  fi
-  [ ! -f $CUR_DIR/build/kernel/out/arch/arm64/boot/dtbo.img ] || cp $CUR_DIR/build/kernel/out/arch/arm64/boot/dtbo.img .
+  cd -
+}
+
+package_kernel() {
+  cd build/anykernel3
+
+  cp $CUR_DIR/build/kernel/out/arch/arm64/boot/Image . || :
+  cp $CUR_DIR/build/kernel/out/arch/arm64/boot/dtb . || {
+    cp $CUR_DIR/build/kernel/out/arch/arm64/boot/dtb.img dtb || :
+  }
+  cp $CUR_DIR/build/kernel/out/arch/arm64/boot/dtbo.img . || :
+
   zip -r $CUR_DIR/build/$DEVICE_CODENAME-$BUILD_CONFIG-kernel.zip ./*
 
   cd -
@@ -221,4 +265,5 @@ patch_kernel
 add_kernelsu
 optimize_config
 build_kernel
+adapt_anykernel3
 package_kernel
